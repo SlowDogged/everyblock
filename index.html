@@ -63,17 +63,19 @@
   <div id="list">Loading…</div>
 
   <script>
-    // —— Dark mode toggle & persistence ——
-    const docEl = document.documentElement;
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    docEl.setAttribute('data-theme', savedTheme);
+    // — Dark-mode toggle & persistence —
+    const root = document.documentElement;
+    const theme = localStorage.getItem('theme') || 'light';
+    root.setAttribute('data-theme', theme);
     document.getElementById('dmToggle').onclick = () => {
-      const next = docEl.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-      docEl.setAttribute('data-theme', next);
+      const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      root.setAttribute('data-theme', next);
       localStorage.setItem('theme', next);
     };
 
-    // —— Your Firebase config here ⚙️ ——
+    // — Firebase setup — fallback to localStorage if config missing/invalid
+    let useFirebase = true;
+    try {
     const firebaseConfig = {
       apiKey: "AIzaSyA71YiMka7LjljSbjFjahAtyhfoSjh4N74",
       authDomain: "everyblock-a9f76.firebaseapp.com",
@@ -83,27 +85,39 @@
       appId: "1:468379549163:web:ac9444d549ff1c1597adae",
       measurementId: "G-98NHNBQG2X"
     };
-    // Initialize Firebase & get DB ref
-    firebase.initializeApp(firebaseConfig);
-    const dbRef = firebase.database().ref('checkedBlocks');
+      firebase.initializeApp(firebaseConfig);
+    } catch(e) {
+      console.warn('Firebase init failed:', e);
+      useFirebase = false;
+    }
+    const dbRef = useFirebase
+      ? firebase.database().ref('checkedBlocks')
+      : null;
 
-    // —— PrismarineJS blocks.json URL (PC 1.21.3) :contentReference[oaicite:0]{index=0} ——
+    // — Shared checked state —
+    let checked = new Set(JSON.parse(localStorage.getItem('checkedBlocks') || '[]'));
+
+    // If Firebase works, keep in sync
+    if (useFirebase) {
+      dbRef.on('value', snap => {
+        const arr = snap.val() || [];
+        checked = new Set(arr);
+        // update UI if already rendered
+        document.querySelectorAll('#list .item input').forEach(cb => {
+          const name = cb.nextElementSibling.textContent.trim();
+          cb.checked = checked.has(name);
+        });
+        // mirror to localStorage
+        localStorage.setItem('checkedBlocks', JSON.stringify([...checked]));
+      }, err => {
+        console.error('Firebase read error:', err);
+      });
+    }
+
+    // — PrismarineJS blocks.json (PC 1.21.3) :contentReference[oaicite:0]{index=0} —
     const JSON_URL = 'https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/pc/1.21.3/blocks.json';
 
-    let checked = new Set();  // will hold current checked names
-
-    // Listen for global changes
-    dbRef.on('value', snap => {
-      const arr = snap.val() || [];
-      checked = new Set(arr);
-      // If list already rendered, update UI
-      document.querySelectorAll('#list .item').forEach(label => {
-        const name = label.textContent.trim();
-        label.querySelector('input').checked = checked.has(name);
-      });
-    });
-
-    // Load blocks, render checkboxes, wire up events
+    // Load & render
     async function loadBlocks() {
       try {
         const res = await fetch(JSON_URL);
@@ -112,11 +126,10 @@
         const names = data
           .map(b => b.displayName || b.name)
           .filter(n => n && !n.startsWith('debug:'))
-          .sort((a,b)=>a.localeCompare(b));
+          .sort((a,b) => a.localeCompare(b));
 
-        const container = document.getElementById('list');
-        container.innerHTML = '';
-
+        const list = document.getElementById('list');
+        list.innerHTML = '';
         names.forEach(name => {
           const id = `blk_${name.replace(/[^a-z0-9]/gi,'_')}`;
           const label = document.createElement('label');
@@ -126,17 +139,18 @@
             <span>${name}</span>
           `;
           const cb = label.querySelector('input');
-          // initialize state (in case DB already loaded)
+          // initialize from our Set
           cb.checked = checked.has(name);
-          // on toggle, update Firebase
+          // on change, update both Firebase & localStorage
           cb.addEventListener('change', () => {
             if (cb.checked) checked.add(name);
             else checked.delete(name);
-            dbRef.set([...checked]);
+            if (useFirebase) dbRef.set([...checked]);
+            localStorage.setItem('checkedBlocks', JSON.stringify([...checked]));
           });
-          container.appendChild(label);
+          list.appendChild(label);
         });
-      } catch (err) {
+      } catch(err) {
         document.getElementById('list').innerHTML =
           `<div class="error">Failed to load block list.<br>${err.message}</div>`;
       }
