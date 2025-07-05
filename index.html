@@ -1,139 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Minecraft Block Checklist</title>
   <style>
-    :root {
-      --bg: #f4f4f4;
-      --fg: #222;
-      --card: #fff;
-      --shadow: rgba(0,0,0,0.1);
-    }
-    [data-theme="dark"] {
-      --bg: #1e1e1e;
-      --fg: #ddd;
-      --card: #2a2a2a;
-      --shadow: rgba(0,0,0,0.5);
-    }
-    * { box-sizing:border-box; margin:0; padding:0 }
-    body {
-      background: var(--bg);
-      color: var(--fg);
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1rem;
-      background: var(--card);
-      box-shadow: 0 2px 4px var(--shadow);
-    }
-    header h1 { font-size: 1.2rem }
-    .toggle {
-      font-size: 1.5rem;
-      cursor: pointer;
-      user-select: none;
-    }
-    #list {
-      flex: 1;
-      padding: 1rem;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 1rem;
-      overflow-y: auto;
-    }
-    .item {
-      background: var(--card);
-      padding: .75rem;
-      border-radius: 6px;
-      box-shadow: 0 1px 3px var(--shadow);
-      display: flex;
-      align-items: center;
-    }
-    .item input { margin-right: .5rem }
-    .error {
-      padding: 2rem;
-      text-align: center;
-      color: crimson;
-    }
+    :root{--bg:#f4f4f4;--fg:#222;--card:#fff;--shadow:rgba(0,0,0,0.1)}
+    [data-theme="dark"]{--bg:#1e1e1e;--fg:#ddd;--card:#2a2a2a;--shadow:rgba(0,0,0,0.5)}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--fg);font-family:sans-serif;
+         display:flex;flex-direction:column;min-height:100vh}
+    header{display:flex;justify-content:space-between;align-items:center;
+            padding:1rem;background:var(--card);
+            box-shadow:0 2px 4px var(--shadow)}
+    header h1{font-size:1.2rem}
+    .toggle{font-size:1.5rem;cursor:pointer;user-select:none}
+    #list{flex:1;padding:1rem;display:grid;
+          grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+          gap:1rem;overflow-y:auto}
+    .item{background:var(--card);padding:.75rem;border-radius:6px;
+          box-shadow:0 1px 3px var(--shadow);display:flex;
+          align-items:center}
+    .item input{margin-right:.5rem}
+    .error{padding:2rem;text-align:center;color:crimson}
   </style>
 </head>
 <body>
   <header>
     <h1>🔲 Minecraft Blocks</h1>
-    <div class="toggle" id="dmToggle" title="Toggle Dark Mode">🌓</div>
+    <div class="toggle" id="dmToggle">🌓</div>
   </header>
   <div id="list">Loading…</div>
 
   <script>
-  // —— Dark‐mode toggle & persistence —— 
+  // ── CONFIG ──────────────────────────────────────────────────────────────
+  const GITHUB_USER = 'SlowDogged';             // ← your GitHub username
+  const REPO        = 'mc-block-checklist';     // ← your repo name
+  const BRANCH      = 'main';                   // ← your default branch
+  const FILE_PATH   = 'blockState.json';        // ← path to your JSON
+  // ───────────────────────────────────────────────────────────────────────
+
+  // Dark-mode toggle (optional)
   const root = document.documentElement;
-  const savedTheme = localStorage.getItem('theme') || 'light';
-  root.setAttribute('data-theme', savedTheme);
-  document.getElementById('dmToggle').onclick = () => {
-    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-    root.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
+  root.setAttribute('data-theme', localStorage.getItem('theme')||'light');
+  document.getElementById('dmToggle').onclick = ()=>{
+    const t = root.getAttribute('data-theme')==='light'?'dark':'light';
+    root.setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
   };
 
-  // —— Source for all MC 1.21.3 blocks ——
-  const JSON_URL = 'https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/pc/1.21.3/blocks.json';
-
-  // —— Our in‐memory state, persisted per‐user —— 
-  let blockState = JSON.parse(localStorage.getItem('blockState') || '{}');
-
-  // —— Render the checklist —— 
-  async function init() {
-    try {
-      const res  = await fetch(JSON_URL);
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      // extract names, skip debug entries, sort
-      const names = data
-        .map(b => b.displayName || b.name)
-        .filter(n => n && !n.startsWith('debug:'))
-        .sort((a, b) => a.localeCompare(b));
-
-      // ensure every block has a boolean in blockState
-      names.forEach(n => {
-        if (typeof blockState[n] !== 'boolean') {
-          blockState[n] = false;
-        }
-      });
-
-      const container = document.getElementById('list');
-      container.innerHTML = '';
-
-      names.forEach(name => {
-        const id = 'blk_' + name.replace(/[^a-z0-9]/gi, '_');
-        const label = document.createElement('label');
-        label.className = 'item';
-        label.innerHTML = `
-          <input type="checkbox" id="${id}">
-          <span>${name}</span>
-        `;
-        const cb = label.querySelector('input');
-        cb.checked = blockState[name];
-        cb.addEventListener('change', () => {
-          blockState[name] = cb.checked;
-          // persist per‐user
-          localStorage.setItem('blockState', JSON.stringify(blockState));
-        });
-        container.appendChild(label);
-      });
-    } catch (err) {
+  // Prompt for token (once per session)
+  let TOKEN = sessionStorage.getItem('gh_token');
+  if (!TOKEN) {
+    TOKEN = prompt(
+      'Enter GitHub Personal Access Token\n(scope: repo, classic PAT)\n—it will be stored in this tab only.'
+    );
+    if (!TOKEN) {
       document.getElementById('list').innerHTML =
-        `<div class="error">Failed to load blocks:<br>${err.message}</div>`;
+        '<div class="error">Token required to sync globally.</div>';
+      throw new Error('No token provided');
     }
+    sessionStorage.setItem('gh_token', TOKEN);
   }
 
-  init();
+  // Helpers: load & save state via GitHub
+  async function loadState() {
+    const url = `https://raw.githubusercontent.com/${GITHUB_USER}/${REPO}/${BRANCH}/${FILE_PATH}?_=${Date.now()}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.statusText);
+    return res.json();
+  }
+
+  async function saveState(state) {
+    const apiURL = `https://api.github.com/repos/${GITHUB_USER}/${REPO}/contents/${FILE_PATH}`;
+    // 1) get SHA
+    const meta = await fetch(apiURL, {
+      headers: { Authorization: `token ${TOKEN}` }
+    }).then(r=>r.json());
+    if (meta.message) throw new Error(meta.message);
+    const sha = meta.sha;
+    // 2) commit
+    const content = btoa(unescape(
+      encodeURIComponent(JSON.stringify(state, null, 2))
+    ));
+    const body = { message:'Update blockState.json', content, sha, branch:BRANCH };
+    const resp = await fetch(apiURL, {
+      method:'PUT',
+      headers:{
+        'Content-Type':'application/json',
+        Authorization:`token ${TOKEN}`
+      },
+      body: JSON.stringify(body)
+    }).then(r=>r.json());
+    if (resp.message) throw new Error(resp.message);
+  }
+
+  // Main: fetch JSON, render checkboxes, wire up syncing
+  (async()=>{
+    let blockState;
+    try {
+      blockState = await loadState();
+    } catch(e) {
+      document.getElementById('list').innerHTML =
+        `<div class="error">Failed to load JSON:<br>${e.message}</div>`;
+      return;
+    }
+
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+    Object.keys(blockState).sort().forEach(name => {
+      const id = 'blk_'+name.replace(/[^a-z0-9]/gi,'_');
+      const lbl = document.createElement('label');
+      lbl.className = 'item';
+      lbl.innerHTML = `<input type="checkbox" id="${id}"><span>${name}</span>`;
+      const cb = lbl.querySelector('input');
+      cb.checked = !!blockState[name];
+      cb.onchange = async () => {
+        blockState[name] = cb.checked;
+        try {
+          await saveState(blockState);
+          console.log('✅ Synced for everyone');
+        } catch(err) {
+          alert('Sync failed: '+err.message);
+        }
+      };
+      list.appendChild(lbl);
+    });
+  })();
   </script>
 </body>
 </html>
