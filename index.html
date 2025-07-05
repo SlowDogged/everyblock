@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <title>Minecraft Block Checklist</title>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <style>
     :root {
       --bg-light: #f0f0f0;
@@ -80,18 +83,31 @@
   </main>
 
   <script>
-    // Theme toggle setup
+    // --- Theme toggle ---
     const toggleBtn = document.getElementById('theme-toggle');
-    const darkMode = localStorage.getItem('darkMode') === 'true';
-    document.body.classList.toggle('dark', darkMode);
-    toggleBtn.textContent = darkMode ? '☀️' : '🌙';
+    const isDark = localStorage.getItem('darkMode') === 'true';
+    document.body.classList.toggle('dark', isDark);
+    toggleBtn.textContent = isDark ? '☀️' : '🌙';
     toggleBtn.addEventListener('click', () => {
-      const isDark = document.body.classList.toggle('dark');
-      toggleBtn.textContent = isDark ? '☀️' : '🌙';
-      localStorage.setItem('darkMode', isDark);
+      const dark = document.body.classList.toggle('dark');
+      toggleBtn.textContent = dark ? '☀️' : '🌙';
+      localStorage.setItem('darkMode', dark);
     });
 
-    // Fetch blocks from sheet (column B)
+    // --- Firebase init ---
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "...",
+      appId: "..."
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // --- Load block names (column B) ---
     const sheetCsvUrl = 'https://docs.google.com/spreadsheets/d/1S3jBzfy_PtJhQI_5jFIN3lXBiUEMebt_rT2x5os2MYw/export?format=csv';
     const checklistEl = document.getElementById('checklist');
     checklistEl.innerHTML = '';
@@ -103,27 +119,28 @@
         const dataRows = lines.slice(1);
         dataRows.forEach(row => {
           const cols = row.split(',');
-          const name = cols[1] ? cols[1].trim() : '';
+          const name = cols[1]?.trim();
           if (!name) return;
 
-          const key = `block_${name.replace(/\s+/g, '_')}`;
-          const item = document.createElement('div');
-          item.className = 'item';
+          const key = name.replace(/\s+/g, '_');
+          const path = `checks/${key}`;
 
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.id = key;
-          cb.checked = localStorage.getItem(key) === 'true';
-          cb.addEventListener('change', () => {
-            localStorage.setItem(key, cb.checked);
+          const item = document.createElement('div'); item.className = 'item';
+          const cb = document.createElement('input'); cb.type = 'checkbox';
+          const id = `cb_${key}`; cb.id = id;
+          const label = document.createElement('label'); label.htmlFor = id; label.textContent = name;
+
+          // realtime listener
+          db.ref(path).on('value', snap => {
+            cb.checked = snap.val() === true;
           });
 
-          const label = document.createElement('label');
-          label.htmlFor = key;
-          label.textContent = name;
+          // update on change
+          cb.addEventListener('change', () => {
+            db.ref(path).set(cb.checked);
+          });
 
-          item.appendChild(cb);
-          item.appendChild(label);
+          item.append(cb, label);
           checklistEl.appendChild(item);
         });
       })
