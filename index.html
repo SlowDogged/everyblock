@@ -22,38 +22,47 @@
       background: var(--bg);
       color: var(--fg);
       font-family: sans-serif;
-      display:flex; flex-direction:column;
-      min-height:100vh;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
     header {
-      display:flex; justify-content:space-between; align-items:center;
-      padding:1rem; background:var(--card);
-      box-shadow:0 2px 4px var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      background: var(--card);
+      box-shadow: 0 2px 4px var(--shadow);
     }
-    header h1 { font-size:1.2rem }
+    header h1 { font-size: 1.2rem }
     .toggle {
-      font-size:1.5rem; cursor:pointer; user-select:none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      user-select: none;
     }
     #list {
-      flex:1; padding:1rem;
-      display:grid;
-      grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
-      gap:1rem; overflow-y:auto;
+      flex: 1;
+      padding: 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      overflow-y: auto;
     }
     .item {
-      background:var(--card); padding:.75rem;
-      border-radius:6px; box-shadow:0 1px 3px var(--shadow);
-      display:flex; align-items:center;
+      background: var(--card);
+      padding: .75rem;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px var(--shadow);
+      display: flex;
+      align-items: center;
     }
-    .item input { margin-right:.5rem }
+    .item input { margin-right: .5rem }
     .error {
-      padding:2rem; text-align:center; color:crimson;
+      padding: 2rem;
+      text-align: center;
+      color: crimson;
     }
   </style>
-
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
   <header>
@@ -63,84 +72,68 @@
   <div id="list">Loading…</div>
 
   <script>
-    // —— Dark-mode toggle & persist in localStorage ——
-    const root = document.documentElement;
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    root.setAttribute('data-theme', savedTheme);
-    document.getElementById('dmToggle').onclick = () => {
-      const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('theme', next);
-    };
+  // —— Dark‐mode toggle & persistence —— 
+  const root = document.documentElement;
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  root.setAttribute('data-theme', savedTheme);
+  document.getElementById('dmToggle').onclick = () => {
+    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+  };
 
-    // —— Your Firebase config; replace with YOUR values ⚙️ ——
-    const firebaseConfig = {
-      apiKey: "AIzaSyA71YiMka7LjljSbjFjahAtyhfoSjh4N74",
-      authDomain: "everyblock-a9f76.firebaseapp.com",
-      projectId: "everyblock-a9f76",
-      storageBucket: "everyblock-a9f76.firebasestorage.app",
-      messagingSenderId: "468379549163",
-      appId: "1:468379549163:web:ac9444d549ff1c1597adae",
-      measurementId: "G-98NHNBQG2X"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const dbRef = firebase.database().ref('checkedBlocks');
+  // —— Source for all MC 1.21.3 blocks ——
+  const JSON_URL = 'https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/pc/1.21.3/blocks.json';
 
-    // —— PrismarineJS blocks.json (PC 1.21.3) ——
-    const JSON_URL = 'https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/pc/1.21.3/blocks.json';
+  // —— Our in‐memory state, persisted per‐user —— 
+  let blockState = JSON.parse(localStorage.getItem('blockState') || '{}');
 
-    let checked = new Set();  // will hold the global checked state
+  // —— Render the checklist —— 
+  async function init() {
+    try {
+      const res  = await fetch(JSON_URL);
+      if (!res.ok) throw new Error(res.statusText);
+      const data = await res.json();
+      // extract names, skip debug entries, sort
+      const names = data
+        .map(b => b.displayName || b.name)
+        .filter(n => n && !n.startsWith('debug:'))
+        .sort((a, b) => a.localeCompare(b));
 
-    // Listen for any changes in Firebase and update UI
-    dbRef.on('value', snap => {
-      const arr = snap.val() || [];
-      checked = new Set(arr);
-      document.querySelectorAll('#list .item input').forEach(cb => {
-        const name = cb.nextElementSibling.textContent.trim();
-        cb.checked = checked.has(name);
+      // ensure every block has a boolean in blockState
+      names.forEach(n => {
+        if (typeof blockState[n] !== 'boolean') {
+          blockState[n] = false;
+        }
       });
-    });
 
-    // Fetch block list, render checkboxes, wire events
-    async function loadBlocks() {
-      try {
-        const res = await fetch(JSON_URL);
-        if (!res.ok) throw new Error(res.statusText);
-        const data = await res.json();
-        const names = data
-          .map(b => b.displayName || b.name)
-          .filter(n => n && !n.startsWith('debug:'))
-          .sort((a, b) => a.localeCompare(b));
+      const container = document.getElementById('list');
+      container.innerHTML = '';
 
-        const container = document.getElementById('list');
-        container.innerHTML = '';
-
-        names.forEach(name => {
-          const id = `blk_${name.replace(/[^a-z0-9]/gi,'_')}`;
-          const label = document.createElement('label');
-          label.className = 'item';
-          label.innerHTML = `
-            <input type="checkbox" id="${id}">
-            <span>${name}</span>
-          `;
-          const cb = label.querySelector('input');
-          // initialize from current Firebase state
-          cb.checked = checked.has(name);
-          // on change, update Firebase (and everyone sees it)
-          cb.addEventListener('change', () => {
-            if (cb.checked) checked.add(name);
-            else checked.delete(name);
-            dbRef.set([...checked]);
-          });
-          container.appendChild(label);
+      names.forEach(name => {
+        const id = 'blk_' + name.replace(/[^a-z0-9]/gi, '_');
+        const label = document.createElement('label');
+        label.className = 'item';
+        label.innerHTML = `
+          <input type="checkbox" id="${id}">
+          <span>${name}</span>
+        `;
+        const cb = label.querySelector('input');
+        cb.checked = blockState[name];
+        cb.addEventListener('change', () => {
+          blockState[name] = cb.checked;
+          // persist per‐user
+          localStorage.setItem('blockState', JSON.stringify(blockState));
         });
-      } catch (err) {
-        document.getElementById('list').innerHTML =
-          `<div class="error">Failed to load block list.<br>${err.message}</div>`;
-      }
+        container.appendChild(label);
+      });
+    } catch (err) {
+      document.getElementById('list').innerHTML =
+        `<div class="error">Failed to load blocks:<br>${err.message}</div>`;
     }
+  }
 
-    loadBlocks();
+  init();
   </script>
 </body>
 </html>
