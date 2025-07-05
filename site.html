@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Minecraft Block Checklist</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    .item { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <h1>Minecraft Block Checklist 🧱</h1>
+  <div id="checklist">Loading blocks...</div>
+
+  <script>
+    // URL to fetch CSV export of your Google Sheet
+    const sheetCsvUrl = 'https://docs.google.com/spreadsheets/d/1S3jBzfy_PtJhQI_5jFIN3lXBiUEMebt_rT2x5os2MYw/export?format=csv';
+    const checklistEl = document.getElementById('checklist');
+    checklistEl.innerHTML = '';
+
+    fetch(sheetCsvUrl)
+      .then(res => res.text())
+      .then(csv => {
+        const lines = csv.split('\n').filter(line => line.trim());
+        // assume first row is header
+        const dataRows = lines.slice(1);
+        dataRows.forEach((row, index) => {
+          // simple CSV parse: split on commas (no commas inside names)
+          const cols = row.split(',');
+          const name = cols[0].trim();
+          const key = `block_${name.replace(/\s+/g, '_')}`;
+
+          const div = document.createElement('div');
+          div.className = 'item';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.id = key;
+          // restore state
+          checkbox.checked = localStorage.getItem(key) === 'true';
+          checkbox.addEventListener('change', () => {
+            localStorage.setItem(key, checkbox.checked);
+          });
+
+          const label = document.createElement('label');
+          label.htmlFor = key;
+          label.textContent = name;
+
+          div.appendChild(checkbox);
+          div.appendChild(label);
+          checklistEl.appendChild(div);
+        });
+      })
+      .catch(err => {
+        checklistEl.textContent = 'Failed to load block list.';
+        console.error(err);
+      });
+  </script>
+</body>
+</html>
