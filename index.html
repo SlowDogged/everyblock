@@ -2,99 +2,78 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Minecraft Block Checklist</title>
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <style>
     :root {
-      --bg-light: #f0f0f0;
-      --bg-dark: #121212;
-      --card-light: #ffffff;
-      --card-dark: #1e1e1e;
-      --text-light: #000000;
-      --text-dark: #ffffff;
-      --accent: #4caf50;
+      --bg: #f4f4f4;
+      --fg: #222;
+      --card: #fff;
+      --shadow: rgba(0,0,0,0.1);
     }
-    * { box-sizing: border-box; }
+    [data-theme="dark"] {
+      --bg: #1e1e1e;
+      --fg: #ddd;
+      --card: #2a2a2a;
+      --shadow: rgba(0,0,0,0.5);
+    }
+    * { box-sizing:border-box; margin:0; padding:0 }
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      margin: 0; padding: 0;
-      background: var(--bg-light);
-      color: var(--text-light);
-      transition: background 0.3s, color 0.3s;
-    }
-    body.dark {
-      background: var(--bg-dark);
-      color: var(--text-dark);
+      background: var(--bg);
+      color: var(--fg);
+      font-family: sans-serif;
+      display:flex; flex-direction:column;
+      min-height:100vh;
     }
     header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 24px;
-      background: var(--card-light);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display:flex; justify-content:space-between; align-items:center;
+      padding:1rem; background:var(--card);
+      box-shadow:0 2px 4px var(--shadow);
     }
-    body.dark header {
-      background: var(--card-dark);
+    header h1 { font-size:1.2rem }
+    .toggle {
+      font-size:1.5rem; cursor:pointer; user-select:none;
     }
-    h1 { margin: 0; font-size: 1.5em; }
-    #theme-toggle {
-      background: none;
-      border: none;
-      font-size: 1.2em;
-      cursor: pointer;
-    }
-    main {
-      max-width: 600px;
-      margin: 24px auto;
-      padding: 0 16px;
+    #list {
+      flex:1; padding:1rem;
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+      gap:1rem; overflow-y:auto;
     }
     .item {
-      display: flex;
-      align-items: center;
-      background: var(--card-light);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      transition: background 0.3s;
+      background:var(--card); padding:.75rem;
+      border-radius:6px; box-shadow:0 1px 3px var(--shadow);
+      display:flex; align-items:center;
     }
-    body.dark .item {
-      background: var(--card-dark);
-      box-shadow: 0 1px 3px rgba(255,255,255,0.05);
-    }
-    .item input[type="checkbox"] {
-      margin-right: 12px;
-      width: 18px;
-      height: 18px;
-      accent-color: var(--accent);
+    .item input { margin-right:.5rem }
+    .error {
+      padding:2rem; text-align:center; color:crimson;
     }
   </style>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
   <header>
-    <h1>Minecraft Block Checklist 🧱</h1>
-    <button id="theme-toggle" aria-label="Toggle Dark Mode">🌙</button>
+    <h1>🔲 Minecraft Blocks</h1>
+    <div class="toggle" id="dmToggle" title="Toggle Dark Mode">🌓</div>
   </header>
-  <main>
-    <div id="checklist">Loading blocks...</div>
-  </main>
+  <div id="list">Loading…</div>
 
   <script>
-    // --- Theme toggle ---
-    const toggleBtn = document.getElementById('theme-toggle');
-    const isDark = localStorage.getItem('darkMode') === 'true';
-    document.body.classList.toggle('dark', isDark);
-    toggleBtn.textContent = isDark ? '☀️' : '🌙';
-    toggleBtn.addEventListener('click', () => {
-      const dark = document.body.classList.toggle('dark');
-      toggleBtn.textContent = dark ? '☀️' : '🌙';
-      localStorage.setItem('darkMode', dark);
-    });
+    // —— Dark mode toggle & persistence ——
+    const docEl = document.documentElement;
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    docEl.setAttribute('data-theme', savedTheme);
+    document.getElementById('dmToggle').onclick = () => {
+      const next = docEl.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      docEl.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    };
 
-    // --- Firebase init ---
+    // —— Your Firebase config here ⚙️ ——
     const firebaseConfig = {
       apiKey: "AIzaSyA71YiMka7LjljSbjFjahAtyhfoSjh4N74",
       authDomain: "everyblock-a9f76.firebaseapp.com",
@@ -104,50 +83,66 @@
       appId: "1:468379549163:web:ac9444d549ff1c1597adae",
       measurementId: "G-98NHNBQG2X"
     };
+    // Initialize Firebase & get DB ref
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const dbRef = firebase.database().ref('checkedBlocks');
 
-    // --- Load block names (column B) ---
-    const sheetCsvUrl = 'https://docs.google.com/spreadsheets/d/1S3jBzfy_PtJhQI_5jFIN3lXBiUEMebt_rT2x5os2MYw/export?format=csv';
-    const checklistEl = document.getElementById('checklist');
-    checklistEl.innerHTML = '';
+    // —— PrismarineJS blocks.json URL (PC 1.21.3) :contentReference[oaicite:0]{index=0} ——
+    const JSON_URL = 'https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/pc/1.21.3/blocks.json';
 
-    fetch(sheetCsvUrl)
-      .then(res => res.text())
-      .then(csv => {
-        const lines = csv.split('\n').filter(l => l.trim());
-        const dataRows = lines.slice(1);
-        dataRows.forEach(row => {
-          const cols = row.split(',');
-          const name = cols[1]?.trim();
-          if (!name) return;
+    let checked = new Set();  // will hold current checked names
 
-          const key = name.replace(/\s+/g, '_');
-          const path = `checks/${key}`;
-
-          const item = document.createElement('div'); item.className = 'item';
-          const cb = document.createElement('input'); cb.type = 'checkbox';
-          const id = `cb_${key}`; cb.id = id;
-          const label = document.createElement('label'); label.htmlFor = id; label.textContent = name;
-
-          // realtime listener
-          db.ref(path).on('value', snap => {
-            cb.checked = snap.val() === true;
-          });
-
-          // update on change
-          cb.addEventListener('change', () => {
-            db.ref(path).set(cb.checked);
-          });
-
-          item.append(cb, label);
-          checklistEl.appendChild(item);
-        });
-      })
-      .catch(err => {
-        checklistEl.textContent = 'Failed to load block list.';
-        console.error(err);
+    // Listen for global changes
+    dbRef.on('value', snap => {
+      const arr = snap.val() || [];
+      checked = new Set(arr);
+      // If list already rendered, update UI
+      document.querySelectorAll('#list .item').forEach(label => {
+        const name = label.textContent.trim();
+        label.querySelector('input').checked = checked.has(name);
       });
+    });
+
+    // Load blocks, render checkboxes, wire up events
+    async function loadBlocks() {
+      try {
+        const res = await fetch(JSON_URL);
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        const names = data
+          .map(b => b.displayName || b.name)
+          .filter(n => n && !n.startsWith('debug:'))
+          .sort((a,b)=>a.localeCompare(b));
+
+        const container = document.getElementById('list');
+        container.innerHTML = '';
+
+        names.forEach(name => {
+          const id = `blk_${name.replace(/[^a-z0-9]/gi,'_')}`;
+          const label = document.createElement('label');
+          label.className = 'item';
+          label.innerHTML = `
+            <input type="checkbox" id="${id}">
+            <span>${name}</span>
+          `;
+          const cb = label.querySelector('input');
+          // initialize state (in case DB already loaded)
+          cb.checked = checked.has(name);
+          // on toggle, update Firebase
+          cb.addEventListener('change', () => {
+            if (cb.checked) checked.add(name);
+            else checked.delete(name);
+            dbRef.set([...checked]);
+          });
+          container.appendChild(label);
+        });
+      } catch (err) {
+        document.getElementById('list').innerHTML =
+          `<div class="error">Failed to load block list.<br>${err.message}</div>`;
+      }
+    }
+
+    loadBlocks();
   </script>
 </body>
 </html>
